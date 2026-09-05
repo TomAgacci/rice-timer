@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Rice Timing Engine — 1–12 Cups, All Types</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 1.5rem;
+      background: #111;
+      color: #eee;
+    }
+    h1, h2 {
+      margin-bottom: 0.5rem;
+    }
+    .panel {
+      border: 1px solid #444;
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      background: #1b1b1b;
+    }
+    label {
+      display: block;
+      margin: 0.4rem 0 0.1rem;
+      font-size: 0.9rem;
+    }
+    select, input {
+      width: 100%;
+      padding: 0.35rem 0.5rem;
+      border-radius: 4px;
+      border: 1px solid #555;
+      background: #222;
+      color: #eee;
+    }
+    .row {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .col {
+      flex: 1 1 220px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 0.35rem 0.5rem;
+      text-align: left;
+    }
+    th {
+      background: #222;
+    }
+    code {
+      background: #222;
+      padding: 0.15rem 0.3rem;
+      border-radius: 4px;
+    }
+    .small {
+      font-size: 0.8rem;
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+  <h1>Rice Timing Engine</h1>
+  <p class="small">
+    Select rice amount, type, and heat level to compute water ratio, hydration load, stir interval, stir count, and exact timing.
+    Total cook time is fixed at 20 minutes: 4 min initial, 3 min final stirring, 13 min absorption.
+  </p>
+
+  <div class="panel">
+    <h2>Inputs</h2>
+    <div class="row">
+      <div class="col">
+        <label for="cups">Rice amount (cups, 1–12)</label>
+        <select id="cups">
+          <!-- 1–12 cups -->
+          <option value="1">1 cup</option>
+          <option value="2">2 cups</option>
+          <option value="3">3 cups</option>
+          <option value="4" selected>4 cups</option>
+          <option value="5">5 cups</option>
+          <option value="6">6 cups</option>
+          <option value="7">7 cups</option>
+          <option value="8">8 cups</option>
+          <option value="9">9 cups</option>
+          <option value="10">10 cups</option>
+          <option value="11">11 cups</option>
+          <option value="12">12 cups</option>
+        </select>
+      </div>
+
+      <div class="col">
+        <label for="riceType">Rice type</label>
+        <select id="riceType">
+          <option value="long">Long-grain white / Basmati (H = 1.5, ratio 1:1.5)</option>
+          <option value="jasmine">Jasmine / Short-grain (H = 1.25, ratio 1:1.25)</option>
+          <option value="sushi">Sushi rice (H = 1.2, ratio 1:1.2)</option>
+          <option value="brown">Brown rice (H = 2.5, ratio 1:2.5)</option>
+          <option value="arborio">Arborio / Wild (H = 3.0, ratio 1:3.0)</option>
+        </select>
+      </div>
+
+      <div class="col">
+        <label for="heatLevel">Heat level (HL, 1–12)</label>
+        <select id="heatLevel">
+          <option value="1">1 (lowest)</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6" selected>6 (baseline)</option>
+          <option value="7">7</option>
+          <option value="8">8</option>
+          <option value="9">9</option>
+          <option value="10">10</option>
+          <option value="11">11</option>
+          <option value="12">12 (max)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Computed Ratios & Parameters</h2>
+    <table>
+      <tbody>
+        <tr>
+          <th>Rice amount (R)</th>
+          <td id="outR"></td>
+        </tr>
+        <tr>
+          <th>Water ratio (per cup)</th>
+          <td id="outRatio"></td>
+        </tr>
+        <tr>
+          <th>Total water (W)</th>
+          <td id="outW"></td>
+        </tr>
+        <tr>
+          <th>Hydration load (H)</th>
+          <td id="outH"></td>
+        </tr>
+        <tr>
+          <th>Heat level (HL)</th>
+          <td id="outHL"></td>
+        </tr>
+        <tr>
+          <th>Stir interval (Δt)</th>
+          <td id="outDt"></td>
+        </tr>
+        <tr>
+          <th>Stir count (Stirs)</th>
+          <td id="outStirs"></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="small">
+      Formulas: <code>W = Ratio × R</code>, <code>H = Ratio</code>, <code>Δt = H / HL</code> (minutes),
+      <code>Stirs = floor(3 / Δt)</code> in the 3-minute final stage.
+    </p>
+  </div>
+
+  <div class="panel">
+    <h2>Timing & Stages</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Stage</th>
+          <th>Time window</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Stage 1 — Initial Cook</td>
+          <td>0:00–4:00</td>
+          <td>
+            Add rice and water, lid on, bring to simmer at chosen HL.
+            One quick stir at 0:30, then no more stirring until 4:00.
+          </td>
+        </tr>
+        <tr>
+          <td>Stage 2 — Final Stirring</td>
+          <td>4:00–7:00</td>
+          <td>
+            Stir exactly <span id="outStirsInline"></span> times, every
+            <span id="outDtInline"></span> minutes. Lid off only for brief stirs, then back on.
+          </td>
+        </tr>
+        <tr>
+          <td>Stage 3 — Absorption Hold</td>
+          <td>7:00–20:00</td>
+          <td>
+            Reduce heat to low (HL ≈ 2–3), lid sealed, no stirring. Rice steams and absorbs water.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>Exact Stir Times (Stage 2, 4:00–7:00)</h2>
+    <p class="small">
+      Generated from <code>t_n = 4:00 + n × Δt</code for <code>n = 0 … Stirs − 1</code>.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Time (mm:ss)</th>
+        </tr>
+      </thead>
+      <tbody id="stirTimesBody">
+        <!-- Filled by JS -->
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    const riceTypes = {
+      long:   { name: "Long-grain white / Basmati", ratio: 1.5 },
+      jasmine:{ name: "Jasmine / Short-grain",      ratio: 1.25 },
+      sushi:  { name: "Sushi rice",                 ratio: 1.2 },
+      brown:  { name: "Brown rice",                 ratio: 2.5 },
+      arborio:{ name: "Arborio / Wild",             ratio: 3.0 }
+    };
+
+    const cupsEl      = document.getElementById("cups");
+    const riceTypeEl  = document.getElementById("riceType");
+    const heatLevelEl = document.getElementById("heatLevel");
+
+    const outR       = document.getElementById("outR");
+    const outRatio   = document.getElementById("outRatio");
+    const outW       = document.getElementById("outW");
+    const outH       = document.getElementById("outH");
+    const outHL      = document.getElementById("outHL");
+    const outDt      = document.getElementById("outDt");
+    const outStirs   = document.getElementById("outStirs");
+    const outDtInline    = document.getElementById("outDtInline");
+    const outStirsInline = document.getElementById("outStirsInline");
+    const stirTimesBody  = document.getElementById("stirTimesBody");
+
+    function formatMinutesToMMSS(minutes) {
+      const totalSeconds = Math.round(minutes * 60);
+      const mm = Math.floor(totalSeconds / 60);
+      const ss = totalSeconds % 60;
+      return `${mm}:${ss.toString().padStart(2, "0")}`;
+    }
+
+    function updateEngine() {
+      const R  = parseInt(cupsEl.value, 10);
+      const HL = parseInt(heatLevelEl.value, 10);
+      const typeKey = riceTypeEl.value;
+      const type    = riceTypes[typeKey];
+
+      const ratio = type.ratio;
+      const W     = ratio * R;
+      const H     = ratio;
+      const dt    = H / HL;              // minutes
+      const stirs = Math.floor(3 / dt);  // final 3-minute phase
+
+      // Update ratio table outputs
+      outR.textContent     = `${R} cups`;
+      outRatio.textContent = `1 : ${ratio}`;
+      outW.textContent     = `${W.toFixed(2)} cups`;
+      outH.textContent     = H.toFixed(2);
+      outHL.textContent    = HL.toString();
+      outDt.textContent    = `${dt.toFixed(3)} min (${(dt * 60).toFixed(1)} sec)`;
+      outStirs.textContent = `${stirs} stirs`;
+
+      // Stage 2 inline text
+      outDtInline.textContent    = `${dt.toFixed(3)} min`;
+      outStirsInline.textContent = `${stirs}`;
+
+      // Generate stir times for Stage 2 (4:00–7:00)
+      stirTimesBody.innerHTML = "";
+      for (let n = 0; n < stirs; n++) {
+        const t = 4 + n * dt; // minutes from 0:00
+        const tr = document.createElement("tr");
+        const tdIndex = document.createElement("td");
+        const tdTime  = document.createElement("td");
+        tdIndex.textContent = (n + 1).toString();
+        tdTime.textContent  = formatMinutesToMMSS(t);
+        tr.appendChild(tdIndex);
+        tr.appendChild(tdTime);
+        stirTimesBody.appendChild(tr);
+      }
+    }
+
+    cupsEl.addEventListener("change", updateEngine);
+    riceTypeEl.addEventListener("change", updateEngine);
+    heatLevelEl.addEventListener("change", updateEngine);
+
+    // Initial render
+    updateEngine();
+  </script>
+</body>
+</html>
