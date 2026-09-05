@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Adaptive Major-Stir Softness Engine + Ratio-Based Final Window + Water Ratios</title>
+<style>
+  body { background:#111; color:#eee; font-family:Arial; padding:20px; }
+  .panel { background:#1e1e1e; padding:15px; border-radius:8px; margin-bottom:20px; }
+  table { width:100%; border-collapse:collapse; margin-top:10px; }
+  th, td { border:1px solid #444; padding:6px; }
+  th { background:#222; }
+  .major { color:#ffd700; font-weight:bold; }
+  .minor { color:#9acd32; }
+</style>
+</head>
+<body>
+
+<h1>Adaptive Major-Stir Softness Engine + Ratio-Based Final Window + Water Ratios</h1>
+
+<div class="panel">
+  <h2>Inputs</h2>
+
+  <label>Rice Amount (cups)</label>
+  <select id="cups">
+    <option value="1">1</option>
+    <option value="2">2</option>
+    <option value="3">3</option>
+    <option value="4" selected>4</option>
+    <option value="5">5</option>
+    <option value="6">6</option>
+    <option value="7">7</option>
+    <option value="8">8</option>
+    <option value="9">9</option>
+    <option value="10">10</option>
+    <option value="11">11</option>
+    <option value="12">12</option>
+  </select>
+
+  <label>Rice Type</label>
+  <select id="riceType">
+    <option value="basmati">Basmati (H=1.5)</option>
+    <option value="jasmine">Jasmine (H=1.25)</option>
+    <option value="sushi">Sushi (H=1.2)</option>
+    <option value="brown">Brown (H=2.5)</option>
+    <option value="arborio">Arborio (H=3.0)</option>
+  </select>
+
+  <label>Heat Level (HL)</label>
+  <select id="heatLevel">
+    <option value="1">1</option>
+    <option value="2">2</option>
+    <option value="3">3</option>
+    <option value="4">4</option>
+    <option value="5">5</option>
+    <option value="6" selected>6</option>
+    <option value="7">7</option>
+    <option value="8">8</option>
+    <option value="9">9</option>
+    <option value="10">10</option>
+    <option value="11">11</option>
+    <option value="12">12</option>
+  </select>
+
+  <button onclick="compute()">Compute</button>
+</div>
+
+<div class="panel">
+  <h2>Stir Timeline + Water Ratios</h2>
+  <table>
+    <thead><tr>
+      <th>#</th>
+      <th>Time</th>
+      <th>Type</th>
+      <th>Water Ratio (cups)</th>
+    </tr></thead>
+    <tbody id="stirTimes"></tbody>
+  </table>
+</div>
+
+<script>
+function getProfile(type) {
+  switch(type) {
+    case "basmati": return { H:1.5, S:0.8 };
+    case "jasmine": return { H:1.25, S:1.0 };
+    case "sushi":   return { H:1.2, S:1.1 };
+    case "brown":   return { H:2.5, S:0.6 };
+    case "arborio": return { H:3.0, S:1.3 };
+    default:        return { H:1.5, S:1.0 };
+  }
+}
+
+function compute() {
+  const R = parseFloat(document.getElementById("cups").value);
+  const rt = document.getElementById("riceType").value;
+  const HL = parseInt(document.getElementById("heatLevel").value);
+
+  const {H, S} = getProfile(rt);
+
+  const W0 = R * H; // total water
+
+  const T = 20 * (6 / HL);
+  const scale = T / 20;
+
+  let majors = [3,8,15,17].map(t => t * scale);
+
+  // Adaptive major insertion
+  let adaptiveMajors = [...majors];
+  for (let i = 0; i < majors.length - 1; i++) {
+    const gap = majors[i+1] - majors[i];
+    if (gap > 4 * S) {
+      adaptiveMajors.push(majors[i] + gap/2);
+    }
+  }
+  adaptiveMajors.sort((a,b)=>a-b);
+
+  // Final window (scaled 3:20 ratio)
+  const F = T * (3/20);
+  const Fs = T - F;
+
+  // Your exact ratio pattern
+  const ratios = [0.000, 0.333, 0.583, 0.833];
+
+  // Scale minor times
+  const minors = ratios.map(r => Fs + r * F);
+
+  // Water ratio model
+  const boilEnd   = 0.25 * T;
+  const simmerEnd = 0.85 * T;
+
+  function waterRatio(t) {
+    if (t <= boilEnd) {
+      return W0 * (1 - 0.2 * (t / boilEnd));
+    }
+    if (t <= simmerEnd) {
+      const Wb = W0 * 0.8;
+      return Wb * (1 - 0.6 * ((t - boilEnd) / (simmerEnd - boilEnd)));
+    }
+    const Ws = W0 * 0.8 * 0.4;
+    return Ws * (1 - 0.2 * ((t - Fs) / F));
+  }
+
+  const events = [];
+  adaptiveMajors.forEach(t => events.push({t, type:"Major", water:waterRatio(t)}));
+  minors.forEach(t => events.push({t, type:"Minor", water:waterRatio(t)}));
+
+  events.sort((a,b)=>a.t-b.t);
+
+  const tbody = document.getElementById("stirTimes");
+  tbody.innerHTML = "";
+  events.forEach((e,i)=>{
+    const cls = e.type==="Major" ? "major" : "minor";
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td>${i+1}</td>` +
+      `<td>${formatTime(e.t)}</td>` +
+      `<td class="${cls}">${e.type}</td>` +
+      `<td>${e.water.toFixed(2)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function formatTime(mins){
+  const sec = Math.round(mins*60);
+  const m = Math.floor(sec/60);
+  const s = sec%60;
+  return `${m}:${s.toString().padStart(2,"0")}`;
+}
+</script>
+
+</body>
+</html>
