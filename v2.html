@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Real-Time Rice Cooking Engine</title>
+<style>
+  body { background:#111; color:#eee; font-family:Arial; padding:20px; }
+  h1 { margin-top:0; }
+  .panel { background:#1e1e1e; padding:15px; border-radius:8px; margin-bottom:20px; }
+  label { display:block; margin-top:10px; }
+  select, input { width:100%; padding:8px; background:#222; color:#eee; border:1px solid #444; border-radius:4px; }
+  table { width:100%; border-collapse:collapse; margin-top:10px; }
+  th, td { border:1px solid #444; padding:6px; }
+  th { background:#222; }
+  #timerDisplay { font-size:2rem; margin-top:10px; }
+  .stage { font-size:1.2rem; margin-top:10px; }
+  button { padding:10px 20px; background:#444; color:#eee; border:none; border-radius:6px; cursor:pointer; }
+  button:hover { background:#666; }
+</style>
+</head>
+<body>
+
+<h1>Real-Time Rice Cooking Engine</h1>
+
+<div class="panel">
+  <h2>Inputs</h2>
+
+  <label>Rice Amount (1–12 cups)</label>
+  <select id="cups">
+    <option value="1">1 cup</option>
+    <option value="2">2 cups</option>
+    <option value="3">3 cups</option>
+    <option value="4" selected>4 cups</option>
+    <option value="5">5 cups</option>
+    <option value="6">6 cups</option>
+    <option value="7">7 cups</option>
+    <option value="8">8 cups</option>
+    <option value="9">9 cups</option>
+    <option value="10">10 cups</option>
+    <option value="11">11 cups</option>
+    <option value="12">12 cups</option>
+  </select>
+
+  <label>Rice Type</label>
+  <select id="riceType">
+    <option value="1.5">Long-grain / Basmati (H=1.5)</option>
+    <option value="1.25">Jasmine / Short-grain (H=1.25)</option>
+    <option value="1.2">Sushi (H=1.2)</option>
+    <option value="2.5">Brown (H=2.5)</option>
+    <option value="3.0">Arborio / Wild (H=3.0)</option>
+  </select>
+
+  <label>Heat Level (HL 1–12)</label>
+  <select id="heatLevel">
+    <option value="1">1</option>
+    <option value="2">2</option>
+    <option value="3">3</option>
+    <option value="4">4</option>
+    <option value="5">5</option>
+    <option value="6" selected>6 (baseline)</option>
+    <option value="7">7</option>
+    <option value="8">8</option>
+    <option value="9">9</option>
+    <option value="10">10</option>
+    <option value="11">11</option>
+    <option value="12">12 (max)</option>
+  </select>
+
+  <button onclick="compute()">Compute Timing</button>
+</div>
+
+<div class="panel">
+  <h2>Computed Values</h2>
+  <table>
+    <tr><th>Total Water (W)</th><td id="outW"></td></tr>
+    <tr><th>Hydration Load (H)</th><td id="outH"></td></tr>
+    <tr><th>Boil Time</th><td id="outBoil"></td></tr>
+    <tr><th>Simmer Time</th><td id="outSimmer"></td></tr>
+    <tr><th>Steam Time</th><td id="outSteam"></td></tr>
+    <tr><th>Total Cook Time</th><td id="outTotal"></td></tr>
+    <tr><th>Stir Interval (Δt)</th><td id="outDt"></td></tr>
+    <tr><th>Stir Count</th><td id="outStirs"></td></tr>
+  </table>
+</div>
+
+<div class="panel">
+  <h2>Stir Times</h2>
+  <table>
+    <thead><tr><th>#</th><th>Time</th></tr></thead>
+    <tbody id="stirTimes"></tbody>
+  </table>
+</div>
+
+<div class="panel">
+  <h2>Live Cooking Timer</h2>
+  <div id="timerDisplay">00:00</div>
+  <div class="stage" id="stageDisplay"></div>
+  <button onclick="startTimer()">Start Cooking</button>
+</div>
+
+<script>
+let totalCookTime = 0;
+let boilTime = 0;
+let simmerTime = 0;
+let steamTime = 5; // constant
+let stirTimes = [];
+
+function compute() {
+  const R = parseInt(document.getElementById("cups").value);
+  const H = parseFloat(document.getElementById("riceType").value);
+  const HL = parseInt(document.getElementById("heatLevel").value);
+
+  const ratio = H;
+  const W = R * ratio;
+
+  const P = HL / 6; // thermal power multiplier
+
+  boilTime = (8 + 0.5 * R) / P;
+  simmerTime = (12 * H) / P;
+  totalCookTime = boilTime + simmerTime + steamTime;
+
+  const dt = H / HL;
+  const stirs = Math.floor((simmerTime * 0.25) / dt);
+
+  document.getElementById("outW").innerText = W.toFixed(2) + " cups";
+  document.getElementById("outH").innerText = H.toFixed(2);
+  document.getElementById("outBoil").innerText = boilTime.toFixed(2) + " min";
+  document.getElementById("outSimmer").innerText = simmerTime.toFixed(2) + " min";
+  document.getElementById("outSteam").innerText = steamTime + " min";
+  document.getElementById("outTotal").innerText = totalCookTime.toFixed(2) + " min";
+  document.getElementById("outDt").innerText = dt.toFixed(3) + " min";
+  document.getElementById("outStirs").innerText = stirs;
+
+  // Generate stir times
+  stirTimes = [];
+  const start = boilTime; // stirring starts after boil
+  for (let i = 0; i < stirs; i++) {
+    stirTimes.push(start + i * dt);
+  }
+
+  const tbody = document.getElementById("stirTimes");
+  tbody.innerHTML = "";
+  stirTimes.forEach((t, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${i+1}</td><td>${formatTime(t)}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function formatTime(mins) {
+  const sec = Math.round(mins * 60);
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+let timerInterval = null;
+function startTimer() {
+  if (!totalCookTime) compute();
+
+  let remaining = totalCookTime * 60;
+  let stage = "Boil";
+
+  timerInterval = setInterval(() => {
+    remaining--;
+
+    if (remaining <= 0) {
+      clearInterval(timerInterval);
+      document.getElementById("timerDisplay").innerText = "DONE";
+      document.getElementById("stageDisplay").innerText = "Rice Finished!";
+      return;
+    }
+
+    const mins = Math.floor(remaining / 60);
+    const secs = remaining % 60;
+    document.getElementById("timerDisplay").innerText =
+      `${mins}:${secs.toString().padStart(2, "0")}`;
+
+    const elapsed = totalCookTime * 60 - remaining;
+
+    if (elapsed < boilTime * 60) stage = "Boiling";
+    else if (elapsed < (boilTime + simmerTime) * 60) stage = "Simmering";
+    else stage = "Steaming";
+
+    document.getElementById("stageDisplay").innerText = stage;
+
+  }, 1000);
+}
+</script>
+
+</body>
+</html>
